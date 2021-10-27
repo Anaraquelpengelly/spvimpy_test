@@ -130,8 +130,51 @@ zipped=list(zip(feat, vim, se, ci, p_value))
 
 df=pd.DataFrame(zipped, columns=['feature', 'vimp', 'se','ci', 'p_value'])
 df
+
+#%% get IC upper and lower
+df['2.5%'] = [df['ci'].iloc[r][0][0] for r in range(len(df))]
+df['97.5%'] = [df['ci'].iloc[r][0][1] for r in range(len(df))]
+#%% order the features by importance (even if not significant)
+df=df.sort_values(by='vimp', ascending=False, key=abs)#sort by absolute value
 #%%Make forest plot
+
+#TODO: need to make the order of the Y axis be the order of the df!!!
 import altair as alt
+
+def make_forest(source):
+    #preprocessing:
+    ##remove spaces from column names:
+    source.columns=[col.replace(" ", "") for col in source.columns]
+    source['feature'] = source['feature'].astype('string')
+    source[['vimp', 'p_value','2.5%', '97.5%']]=source[['vimp', 'p_value','2.5%', '97.5%']].astype('float64')
+
+    #points
+    points = alt.Chart(source).mark_point(filled=True).encode(
+    x=alt.X('vimp:Q', title='VIMP'),
+    y=alt.Y(
+        'feature:N', axis=alt.Axis(grid=True)), color=alt.condition('datum.p_value<0.05', alt.ColorValue('red'), alt.ColorValue('black'))
+         ).properties(
+    width=600,
+    height=400)
+    
+    errorbars =points.mark_errorbar().encode(
+    x=alt.X('2.5%:Q', title='VIMP'),
+    x2='97.5%:Q',
+    y="feature:N"
+)
+    #line
+    line=alt.Chart(source).mark_rule(strokeDash=[5,2]).encode(
+    x='a:Q',
+    size=alt.value(2),
+    color=alt.ColorValue('red'),
+    ).transform_calculate(
+    a="0")
+    return points+errorbars+line
+
+
+#%%
+make_forest(df)
+
 
 #%%
 ## ----
