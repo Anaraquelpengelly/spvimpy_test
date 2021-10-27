@@ -1,0 +1,5 @@
+#spvim env
+spvim_env/
+
+#files
+.DS_store
