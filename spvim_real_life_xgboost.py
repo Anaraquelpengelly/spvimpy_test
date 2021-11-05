@@ -271,8 +271,43 @@ df['2.5%'] = [df['ci'].iloc[r][0][0] for r in range(len(df))]
 df['97.5%'] = [df['ci'].iloc[r][0][1] for r in range(len(df))]
 df.drop(columns=['ci'], inplace=True)
 df=df.sort_values(by='vimp', ascending=False, key=abs)#sort by absolute value
-#%% No try and make a function with all those functions !??
+#%% TODO: No try and make a function with all those functions !??
 
+
+#%% Compare with the old model!:
+from sklearn.ensemble import GradientBoostingClassifier
+
+ntrees = np.arange(100, 500, 100)
+lr = np.arange(0.01, 0.1, 0.05)
+param_grid = [{'n_estimators': ntrees, 'learning_rate': lr}]
+
+cv_full = GridSearchCV(GradientBoostingClassifier(loss='deviance', max_depth= 1), param_grid=param_grid, cv = 5)
+#%% 
+ls_obj=[]
+for i in range(X.shape[1]):
+    ls_obj.append(create_vimpy(cv_full, X, y, i))
+
+#That works :)
+#now use get_output on the items of the generated list:
+for i in range(len(ls_obj)):
+    get_output(ls_obj[i])
+
+dic1={'feature':[], 'vimp':[], 'se':[], 
+'ci':[], 'p-value':[] }
+for i in range(len(ls_obj)):
+    dic1['feature'].append(list(heart.columns)[i])
+    dic1['vimp'].append(get_results(ls_obj[i])[0])
+    dic1['se'].append(get_results(ls_obj[i])[1])
+    dic1['ci'].append(get_results(ls_obj[i])[2])
+    dic1['p-value'].append(get_results(ls_obj[i])[3])
+
+df1=pd.DataFrame(dic1)
+df1['2.5%'] = [df1['ci'].iloc[r][0][0] for r in range(len(df1))]
+df1['97.5%'] = [df1['ci'].iloc[r][0][1] for r in range(len(df1))]
+df1.drop(columns=['ci'], inplace=True)
+df1=df1.sort_values(by='vimp', ascending=False, key=abs)
+df1
+#TODO: very weird, so if we use two different algorithms we get very different results! hum...might write an issue about it?? re-read paper!
 #%% 
 # ######################
 # Below is the manual execution of the above! for a different model!
