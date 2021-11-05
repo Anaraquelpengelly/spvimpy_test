@@ -23,4 +23,4 @@ red_fit_sbp <- predict(red_mod_sbp)
 install.packages("vimp")
 library("vimp")
 library("dplyr")
-?
+?vim

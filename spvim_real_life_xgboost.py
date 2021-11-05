@@ -1,5 +1,6 @@
 #%% real life example  taken from : https://bdwilliamson.github.io/vimp/articles/introduction_to_vimp.html 
 #get sourth african heart disease data:
+#Important note: this code runs on a conda virtual environment where all packages were installed using conda except vimpy, which was installed with pip
 from altair.vegalite.v4.schema.core import InlineData
 from numpy.core.numeric import outer
 import pandas as pd
@@ -9,10 +10,13 @@ data = pd.read_csv("http://web.stanford.edu/~hastie/ElemStatLearn/datasets/SAhea
 heart = data.iloc[0:data.shape[0] , 1:data.shape[1]]
 #%%
 heart['famhist'] = np.where(heart['famhist'] == 'Present',1, 0 )
+
 #%%
 X= heart.drop(columns='chd')
 X=X.to_numpy()
 y=np.array(heart.chd)
+#%%
+heart.drop(columns=['chd'], inplace=True)
 #%%
 #Here we try xgboost:
 #info here: https://www.analyticsvidhya.com/blog/2016/03/complete-guide-parameter-tuning-xgboost-with-codes-python/
@@ -23,7 +27,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score , roc_curve
 from sklearn.model_selection import train_test_split, GridSearchCV
 import matplotlib.pyplot as plt
 %matplotlib inline
-from matplotlib.pyplot import rcParams
+from matplotlib.pyplot import get, rcParams
 rcParams['figure.figsize'] = 12, 4
 
 #%% define function to do model fit:
@@ -177,7 +181,8 @@ max_depth=4, #max depth of a tree
 min_child_weight=3, # weight of leaf? needs to be tuned too high values can lead to underfitting.
 gamma=0,
 subsample=0.8,
-col_sample_bytree=0.75,#prop of obs to be used for each tree. 
+col_sample_bytree=0.75,#prop of obs to be used for each tree. (TODO:this will be depriated!) 
+use_label_encoder=False,
 reg_alpha= 15, 
 objective='binary:logistic',
 nthread=4, #used for parallel processing! enter number of cores in the system.
@@ -187,18 +192,91 @@ seed=27
 #%%
 modelfit(xgb_new, X_train, y_train, X_test, y_test)
 #of note, should also do a grid search for the learning rate. 0.1 was better than 0.01 and that 0.3
-
-#%%
-ntrees = np.arange(100, 500, 100)
-lr = np.arange(0.01, 0.1, 0.05)
-param_grid = [{'n_estimators': ntrees, 'learning_rate': lr}]
-
-#set up cv objects
-cv_full = GridSearchCV(GradientBoostingClassifier(loss='deviance', max_depth= 1), param_grid=param_grid, cv = 5)
-cv_small = GridSearchCV(GradientBoostingClassifier(loss='deviance', max_depth = 1), param_grid=param_grid, cv= 5)
-
-#%%
+#%% Now we import vimpy (here is the link to the R vignette: https://bdwilliamson.github.io/vimp/articles/introduction_to_vimp.html)
 import vimpy
+import warnings
+warnings.filterwarnings('ignore')
+#%% Try to run vimpy for the first feature (sbp) 
+lm_vim_sbp = vimpy.vim(y = y, x = X , s = 0, 
+pred_func=xgb_new, measure_type = "r_squared")
+#note: it is very interesting that that when I change the measure_type which corresponds to the type of importance to compute, from r_squared to auc, 
+# the feature importance (vimp) goes down, at least in the case of the first feature). 
+# TODO: I wonder if the order of the feature importance changes?
+
+#%% to remove the annoying warning of xgboost that 
+#%% create function to get all outputs for a function:
+def get_output(vimpy_object):
+    # get point estimate
+    vimpy_object.get_point_est()
+    #get influence function estimate
+    vimpy_object.get_influence_function()
+    #get standard error
+    vimpy_object.get_se()
+    #get a confidence interval
+    vimpy_object.get_ci()
+    #do a hypothesis test, compute p-value
+    vimpy_object.hypothesis_test(alpha=0.05, delta=0)
+    #TODO: what is delta?
+#%%   
+get_output(lm_vim_sbp)
+#%% Now I want to do a function that will:
+#-1 take an algorithm and make a spvim object for each feature in a dataframe.
+#-2 get the output of the spvim object ( with the get_output function)
+#-3 get the vimpy results
+#-4 make a dataframe with the results from highest to lowest feature importance
+
+## the arguments should be: 
+# algorithm ( the algorithm with the parameters to use)
+# X
+# y
+# s = the feature number
+
+## first lets define a function for one feature:
+def create_vimpy(alg, X, y, s, measure='r_squared'):
+    '''creates a vimpy object'''
+    vim_object = vimpy.vim(y=y, x=X, s=s, pred_func=alg, 
+    measure_type=measure)
+    return vim_object
+
+ls_obj=[]
+for i in range(X.shape[1]):
+    ls_obj.append(create_vimpy(xgb_new, X, y, i))
+
+#That works :)
+#now use get_output on the items of the generated list:
+for i in range(len(ls_obj)):
+    get_output(ls_obj[i])
+
+#seems to work! 
+
+#Now get the results from the list of objects you just called the vimpy function on :
+def get_results(vim_obj):
+    '''this function gets the results of a vim object on which the outputs have been called
+    it returns, vimp_, se_, ci_, p_value_'''
+    return [vim_obj.vimp_, vim_obj.se_, vim_obj.ci_, vim_obj.p_value_]
+
+#%% use the functions to fil in a dictionary
+dic={'feature':[], 'vimp':[], 'se':[], 
+'ci':[], 'p-value':[] }
+for i in range(len(ls_obj)):
+    dic['feature'].append(list(heart.columns)[i])
+    dic['vimp'].append(get_results(ls_obj[i])[0])
+    dic['se'].append(get_results(ls_obj[i])[1])
+    dic['ci'].append(get_results(ls_obj[i])[2])
+    dic['p-value'].append(get_results(ls_obj[i])[3])
+
+df=pd.DataFrame(dic)
+#%%
+df['2.5%'] = [df['ci'].iloc[r][0][0] for r in range(len(df))]
+df['97.5%'] = [df['ci'].iloc[r][0][1] for r in range(len(df))]
+df.drop(columns=['ci'], inplace=True)
+df=df.sort_values(by='vimp', ascending=False, key=abs)#sort by absolute value
+#%% No try and make a function with all those functions !??
+
+#%% 
+# ######################
+# Below is the manual execution of the above! for a different model!
+
 lm_vim_sbp = vimpy.vim(y = y, x = X , s = 0, 
 pred_func=cv_full, measure_type = "r_squared")
 #
