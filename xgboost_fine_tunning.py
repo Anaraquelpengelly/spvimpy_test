@@ -1,11 +1,15 @@
+import numpy as np
+import pandas as pd
 import xgboost as xgb
 from xgboost.sklearn import XGBClassifier  
 from sklearn.metrics import accuracy_score, roc_auc_score , roc_curve
 from sklearn.model_selection import train_test_split, GridSearchCV
 import matplotlib.pyplot as plt
-%matplotlib inline
 from matplotlib.pyplot import get, rcParams
 rcParams['figure.figsize'] = 12, 4
+
+#Here we try to fine tune the parameters of XGboost :
+#info here: https://www.analyticsvidhya.com/blog/2016/03/complete-guide-parameter-tuning-xgboost-with-codes-python/
 
 #%% define function to do model fit:
 #Here we use the cross validation function of xgb. we give the function an algorithm ( the xgb classifier), the train dataframe, the predictors
@@ -167,5 +171,5 @@ scale_pos_weight=1, # for high class imbalance!helps in fater convergence..
 seed=27
 )
 #%%
-# modelfit(xgb_new, X_train, y_train, X_test, y_test)
+modelfit(xgb_new, X_train, y_train, X_test, y_test)
 #of note, should also do a grid search for the learning rate. 0.1 was better than 0.01 and that 0.3
